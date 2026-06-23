@@ -11,10 +11,11 @@ This repository serves as a reference implementation demonstrating **best practi
    - [Database Isolation per Test](#database-isolation-per-test)
    - [Dynamic DDL Schema Migration](#dynamic-ddl-schema-migration)
 3. [Workload Simulation](#3-workload-simulation)
-4. [Build & Testing Automation](#4-build--testing-automation)
+4. [Model Generation (yo)](#4-model-generation-yo)
+5. [Build & Testing Automation](#5-build--testing-automation)
    - [Makefile Orchestration](#makefile-orchestration)
    - [CI/CD Pipeline (GitHub Actions & act)](#cicd-pipeline-github-actions--act)
-5. [Prerequisites](#5-prerequisites)
+6. [Prerequisites](#6-prerequisites)
 
 ---
 
@@ -84,7 +85,25 @@ These relational patterns are tested under strict transactions in [main.go](./ma
 
 ---
 
-## 4. Build & Testing Automation
+## 4. Model Generation (yo)
+
+Go struct models and Spanner database queries are automatically generated from [schema.sql](./schema.sql) using the [yo code generator](https://github.com/cloudspannerecosystem/yo) tool (specifically tailored for Cloud Spanner).
+
+### Code Generation Workflow
+* **Automatic Mapping**: The `yo` generator parses standard Spanner DDL files, maps Spanner types (such as `NUMERIC`, `TIMESTAMP`, and `STRING`) to Go native types (such as `big.Rat`, `time.Time`, and `string`), and writes clean database abstraction logic to the `models/` directory.
+* **Helper Script**: To regenerate the database models after making changes to [schema.sql](./schema.sql), run the utility script:
+  ```bash
+  ./scripts/generate_models.sh
+  ```
+  Internally, this wrapper invokes:
+  ```bash
+  yo generate schema.sql --from-ddl -o models
+  ```
+* **Index-based Query Generation**: Any unique or secondary index declared in [schema.sql](./schema.sql) (such as `TransactionsByReferenceID`) triggers `yo` to generate type-safe finder methods. For example, it automatically generates `FindTransactionsByAmountTransactionTypeReferenceID` inside the models module to query the database using that specific index.
+
+---
+
+## 5. Build & Testing Automation
 
 ### Makefile Orchestration
 The local task runner is defined in the [Makefile](./Makefile):
@@ -103,9 +122,10 @@ The continuous integration pipeline is defined in [.github/workflows/ci.yaml](./
 
 ---
 
-## 5. Prerequisites
+## 6. Prerequisites
 
 * Go v1.26.4
 * Docker Desktop (with Rosetta 2 enabled if running on Apple Silicon Macs)
 * `golangci-lint` (for local styling checks)
 * `act` (optional, for simulating CI workflows locally)
+* `yo` (Spanner code generator CLI tool, installed via `go install github.com/cloudspannerecosystem/yo@latest`)
