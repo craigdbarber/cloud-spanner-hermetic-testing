@@ -127,11 +127,11 @@ func setupTestDB(t *testing.T) (*spanner.Client, func()) {
 					},
 				})
 			if err != nil {
-				log.Fatalf("Failed to create test instance")
+				t.Fatalf("Failed to create test instance")
 			}
 			_, err = op.Wait(t.Context())
 			if err != nil {
-				log.Fatalf("Failed waiting on create instance op, err: %v", err)
+				t.Fatalf("Failed waiting on create instance op, err: %v", err)
 			}
 		}
 		isIntanceInitialized = true
