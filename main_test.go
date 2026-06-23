@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"cloud-spanner-ledger/models"
-	"context"
 	"fmt"
 	"log"
 	"math/big"
@@ -103,7 +102,7 @@ var (
 
 func setupTestDB(t *testing.T) (*spanner.Client, func()) {
 	instanceAdminClient, err := instanceAdminApi.NewInstanceAdminClient(
-		context.Background())
+		t.Context())
 	if err != nil {
 		log.Fatalf("Failed to create instance admin client, err: %v", err)
 	}
