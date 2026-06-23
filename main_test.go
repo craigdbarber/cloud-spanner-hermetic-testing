@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -95,6 +96,11 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+var (
+	setupInstanceMutex   sync.Mutex
+	isIntanceInitialized bool
+)
+
 func setupTestDB(t *testing.T) (*spanner.Client, func()) {
 	instanceAdminClient, err := instanceAdminApi.NewInstanceAdminClient(
 		context.Background())
@@ -103,29 +109,34 @@ func setupTestDB(t *testing.T) (*spanner.Client, func()) {
 	}
 	defer instanceAdminClient.Close() //nolint:errcheck
 
-	_, err = instanceAdminClient.GetInstance(t.Context(), &instancepb.GetInstanceRequest{
-		Name: TestInstance,
-	})
-	if err != nil {
-		op, err := instanceAdminClient.CreateInstance(t.Context(),
-			&instancepb.CreateInstanceRequest{
-				Parent:     fmt.Sprintf("projects/%s", TestProject),
-				InstanceId: TestInstanceId,
-				Instance: &instancepb.Instance{
-					Config:      fmt.Sprintf("projects/%s/instanceConfigs/emulator-config", TestProject),
-					DisplayName: "Local Testing Instance",
-					NodeCount:   1,
-					Labels:      map[string]string{"env": "development"},
-				},
-			})
+	setupInstanceMutex.Lock()
+	if !isIntanceInitialized {
+		_, err = instanceAdminClient.GetInstance(t.Context(), &instancepb.GetInstanceRequest{
+			Name: TestInstance,
+		})
 		if err != nil {
-			log.Fatalf("Failed to create test instance")
+			op, err := instanceAdminClient.CreateInstance(t.Context(),
+				&instancepb.CreateInstanceRequest{
+					Parent:     fmt.Sprintf("projects/%s", TestProject),
+					InstanceId: TestInstanceId,
+					Instance: &instancepb.Instance{
+						Config:      fmt.Sprintf("projects/%s/instanceConfigs/emulator-config", TestProject),
+						DisplayName: "Local Testing Instance",
+						NodeCount:   1,
+						Labels:      map[string]string{"env": "development"},
+					},
+				})
+			if err != nil {
+				log.Fatalf("Failed to create test instance")
+			}
+			_, err = op.Wait(t.Context())
+			if err != nil {
+				log.Fatalf("Failed waiting on create instance op, err: %v", err)
+			}
 		}
-		_, err = op.Wait(t.Context())
-		if err != nil {
-			log.Fatalf("Failed waiting on create instance op, err: %v", err)
-		}
+		isIntanceInitialized = true
 	}
+	setupInstanceMutex.Unlock()
 
 	adminClient, err := adminApi.NewDatabaseAdminClient(t.Context())
 	if err != nil {
