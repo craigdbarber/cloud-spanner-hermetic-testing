@@ -1,0 +1,42 @@
+name: Cloud Spanner Integration Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+jobs:
+  validate-and-test:
+    runs-on: ubuntu-latest
+  
+    services:
+      spanner-emulator:
+        image: gcr.io/cloud-spanner-emulator/emulator:latest
+        ports:
+          - 9010:9010
+          - 9020:9020
+        options: >-                                                                            
+              --workdir /
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+      
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.12.2
+
+      - name: Run Makefile
+        env:
+          SPANNER_EMULATOR_HOST: localhost:9010
+        run: |
+          make build test vuln
+      

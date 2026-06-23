@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS Transactions (
     TransactionID   STRING(36) NOT NULL,
     Amount          NUMERIC NOT NULL,
     CreatedAt       TIMESTAMP NOT NULL,
-    TransactionType STRING(10) NOT NULL
+    TransactionType STRING(10) NOT NULL,
+    ReferenceID     STRING(36) NOT NULL DEFAULT (GENERATE_UUID())
 ) PRIMARY KEY(TenantID, AccountID, TransactionID),
 INTERLEAVE IN PARENT Accounts ON DELETE CASCADE;
+CREATE INDEX TransactionsByReferenceID ON Transactions(ReferenceID) STORING (Amount, TransactionType);

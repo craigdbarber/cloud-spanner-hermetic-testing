@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/spanner"
+	"google.golang.org/api/iterator"
 	"google.golang.org/grpc/codes"
 )
 
@@ -20,6 +21,7 @@ type Transaction struct {
 	Amount          big.Rat   `spanner:"Amount" json:"Amount"`                   // Amount
 	CreatedAt       time.Time `spanner:"CreatedAt" json:"CreatedAt"`             // CreatedAt
 	TransactionType string    `spanner:"TransactionType" json:"TransactionType"` // TransactionType
+	ReferenceID     string    `spanner:"ReferenceID" json:"ReferenceID"`         // ReferenceID
 }
 
 func TransactionPrimaryKeys() []string {
@@ -38,6 +40,7 @@ func TransactionColumns() []string {
 		"Amount",
 		"CreatedAt",
 		"TransactionType",
+		"ReferenceID",
 	}
 }
 
@@ -49,6 +52,7 @@ func TransactionWritableColumns() []string {
 		"Amount",
 		"CreatedAt",
 		"TransactionType",
+		"ReferenceID",
 	}
 }
 
@@ -73,6 +77,8 @@ func (t *Transaction) columnsToPtrs(cols []string, customPtrs map[string]interfa
 			ret = append(ret, &t.CreatedAt)
 		case "TransactionType":
 			ret = append(ret, &t.TransactionType)
+		case "ReferenceID":
+			ret = append(ret, &t.ReferenceID)
 		default:
 			return nil, fmt.Errorf("unknown column: %s", col)
 		}
@@ -96,6 +102,8 @@ func (t *Transaction) columnsToValues(cols []string) ([]interface{}, error) {
 			ret = append(ret, t.CreatedAt)
 		case "TransactionType":
 			ret = append(ret, t.TransactionType)
+		case "ReferenceID":
+			ret = append(ret, t.ReferenceID)
 		default:
 			return nil, fmt.Errorf("unknown column: %s", col)
 		}
@@ -203,4 +211,82 @@ func ReadTransaction(ctx context.Context, db YORODB, keys spanner.KeySet) ([]*Tr
 func (t *Transaction) Delete(ctx context.Context) *spanner.Mutation {
 	values, _ := t.columnsToValues(TransactionPrimaryKeys())
 	return spanner.Delete("Transactions", spanner.Key(values))
+}
+
+// FindTransactionsByAmountTransactionTypeReferenceID retrieves multiple rows from 'Transactions' as a slice of Transaction.
+//
+// Generated from index 'TransactionsByReferenceID'.
+func FindTransactionsByAmountTransactionTypeReferenceID(ctx context.Context, db YORODB, referenceID string) ([]*Transaction, error) {
+	const sqlstr = "SELECT " +
+		"TenantID, AccountID, TransactionID, Amount, CreatedAt, TransactionType, ReferenceID " +
+		"FROM Transactions@{FORCE_INDEX=TransactionsByReferenceID} " +
+		"WHERE ReferenceID = @param0"
+
+	stmt := spanner.NewStatement(sqlstr)
+	stmt.Params["param0"] = referenceID
+
+	decoder := newTransaction_Decoder(TransactionColumns())
+
+	// run query
+	YOLog(ctx, sqlstr, referenceID)
+	iter := db.Query(ctx, stmt)
+	defer iter.Stop()
+
+	// load results
+	res := []*Transaction{}
+	for {
+		row, err := iter.Next()
+		if err != nil {
+			if err == iterator.Done {
+				break
+			}
+			return nil, newError("FindTransactionsByAmountTransactionTypeReferenceID", "Transactions", err)
+		}
+
+		t, err := decoder(row)
+		if err != nil {
+			return nil, newErrorWithCode(codes.Internal, "FindTransactionsByAmountTransactionTypeReferenceID", "Transactions", err)
+		}
+
+		res = append(res, t)
+	}
+
+	return res, nil
+}
+
+// ReadTransactionsByAmountTransactionTypeReferenceID retrieves multiples rows from 'Transactions' by KeySet as a slice.
+//
+// This does not retrieve all columns of 'Transactions' because an index has only columns
+// used for primary key, index key and storing columns. If you need more columns, add storing
+// columns or Read by primary key or Query with join.
+//
+// Generated from unique index 'TransactionsByReferenceID'.
+func ReadTransactionsByAmountTransactionTypeReferenceID(ctx context.Context, db YORODB, keys spanner.KeySet) ([]*Transaction, error) {
+	var res []*Transaction
+	columns := []string{
+		"TenantID",
+		"AccountID",
+		"TransactionID",
+		"ReferenceID",
+		"Amount",
+		"TransactionType",
+	}
+
+	decoder := newTransaction_Decoder(columns)
+
+	rows := db.ReadUsingIndex(ctx, "Transactions", "TransactionsByReferenceID", keys, columns)
+	err := rows.Do(func(row *spanner.Row) error {
+		t, err := decoder(row)
+		if err != nil {
+			return err
+		}
+		res = append(res, t)
+
+		return nil
+	})
+	if err != nil {
+		return nil, newErrorWithCode(codes.Internal, "ReadTransactionsByAmountTransactionTypeReferenceID", "Transactions", err)
+	}
+
+	return res, nil
 }
